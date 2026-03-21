@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('physical_files', function (Blueprint $table) {
             $table->id();
             $table->string('file_hash')->unique();
-            $table->string('file_size_bytes');
+            $table->string('file_size');
             $table->string('reference_count');
             $table->timestamps();
         });
