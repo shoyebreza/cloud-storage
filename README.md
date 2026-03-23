@@ -1,58 +1,137 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+# Cloud Storage Backend System
 
-## About Laravel
+This project is a backend system simulating a cloud file storage service where users can upload, delete, and view stored files under a limited storage quota. Built with Laravel and MySQL.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- User storage quota: 500 MB per user
+- Upload, delete, and list files for each user
+- Storage summary endpoint
+- File deduplication by hash (bonus)
+- Concurrency-safe storage limit enforcement
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Project Setup
 
-## Learning Laravel
+1. **Clone the repository**
+	```bash
+	git clone <your-repo-url>
+	cd cloud-storage
+	```
+2. **Install dependencies**
+	```bash
+	composer install
+	```
+3. **Copy and edit environment file**
+	```bash
+	cp .env.example .env
+	# Edit .env to set your database credentials
+	```
+4. **Generate application key**
+	```bash
+	php artisan key:generate
+	```
+5. **Run migrations**
+	```bash
+	php artisan migrate
+	```
+6. **(Optional) Seed sample users**
+	```bash
+	php artisan db:seed
+	```
+7. **Start the development server**
+	```bash
+	php artisan serve
+	```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Database Setup
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Configure your MySQL database in the `.env` file:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=cloud_storage
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Run migrations as shown above to create all required tables.
 
-## Contributing
+## API Endpoints
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+All endpoints are prefixed with `/api`.
 
-## Code of Conduct
+### Upload File
+**POST** `/api/users/{user_id}/files`
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Form-data body:
+- `file`: (file) The file to upload
 
-## Security Vulnerabilities
+### Delete File
+**DELETE** `/api/users/{user_id}/files/{file_id}`
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### List User Files
+**GET** `/api/users/{user_id}/files`
+
+### Storage Summary
+**GET** `/api/users/{user_id}/storage-summary`
+
+#### Response Example
+```json
+{
+  "data": {
+	 "user_id": 1,
+	 "storage_limit_bytes": 524288000,
+	 "total_storage_used_bytes": 85354,
+	 "remaining_storage_bytes": 524202646,
+	 "total_active_files": 1
+  }
+}
+```
+
+## Design Decisions & Assumptions
+
+- **User Quota:** Each user has a 500 MB quota, tracked in the `used_storage_bytes` column.
+- **Deduplication:** Physical files are stored once per unique hash. Multiple users can reference the same physical file.
+- **Soft Delete:** Files are soft-deleted (marked with `deleted_at`) and do not count toward quota after deletion.
+- **No Authentication:** For simplicity, authentication is not implemented.
+- **File Content:** Actual file content is stored in `storage/app/user-files/{user_id}/`.
+
+## Concurrency Control
+
+All quota checks and file operations are wrapped in database transactions with row-level locking (`lockForUpdate`) to prevent race conditions and ensure the storage limit is never exceeded, even with simultaneous uploads.
+
+## Scaling Considerations
+
+- **Database:** Use indexed columns for user and file lookups. For 100K+ users, consider sharding or partitioning.
+- **Storage:** Use cloud storage (e.g., S3) for file content in production.
+- **Queue:** For heavy upload/delete traffic, move file processing to background jobs.
+
+## Sample Requests (cURL)
+
+**Upload File:**
+```bash
+curl -X POST http://localhost:8000/api/users/1/files \
+  -F "file=@/path/to/your/file.pdf"
+```
+
+**Delete File:**
+```bash
+curl -X DELETE http://localhost:8000/api/users/1/files/1
+```
+
+**List Files:**
+```bash
+curl http://localhost:8000/api/users/1/files
+```
+
+**Storage Summary:**
+```bash
+curl http://localhost:8000/api/users/1/storage-summary
+```
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT

@@ -15,9 +15,7 @@ class StoreUserFileRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file_name' => ['required', 'string', 'max:255'],
-            'file_size' => ['required', 'integer', 'min:1', 'max:'.User::STORAGE_LIMIT_BYTES],
-            'file_hash' => ['required', 'string', 'max:255'],
+            'file' => ['required', 'file', 'max:' . User::STORAGE_LIMIT_BYTES],
         ];
     }
 }

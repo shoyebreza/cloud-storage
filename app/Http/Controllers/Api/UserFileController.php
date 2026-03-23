@@ -34,9 +34,15 @@ class UserFileController extends Controller
 
     public function store(StoreUserFileRequest $request, User $user): JsonResponse
     {
-        $payload = $request->validated();
+        $uploadedFile = $request->file('file');
+        $fileName = $uploadedFile->getClientOriginalName();
+        $fileSize = $uploadedFile->getSize();
+        $fileHash = hash_file('sha256', $uploadedFile->getRealPath());
 
-        return DB::transaction(function () use ($payload, $user): JsonResponse {
+        // Store the file in storage/app/user-files/{user_id}/
+        $storagePath = $uploadedFile->storeAs('user-files/' . $user->id, $fileName);
+
+        return DB::transaction(function () use ($user, $fileName, $fileSize, $fileHash): JsonResponse {
             $lockedUser = User::query()
                 ->whereKey($user->id)
                 ->lockForUpdate()
@@ -44,7 +50,7 @@ class UserFileController extends Controller
 
             $duplicateFile = StoredFile::query()
                 ->where('user_id', $lockedUser->id)
-                ->where('file_name', $payload['file_name'])
+                ->where('file_name', $fileName)
                 ->whereNull('deleted_at')
                 ->exists();
 
@@ -54,7 +60,7 @@ class UserFileController extends Controller
                 ], Response::HTTP_CONFLICT);
             }
 
-            $newUsage = $lockedUser->used_storage_bytes + $payload['file_size'];
+            $newUsage = $lockedUser->used_storage_bytes + $fileSize;
 
             if ($newUsage > User::STORAGE_LIMIT_BYTES) {
                 return response()->json([
@@ -63,11 +69,11 @@ class UserFileController extends Controller
             }
 
             $physicalFile = PhysicalFile::query()
-                ->where('file_hash', $payload['file_hash'])
+                ->where('file_hash', $fileHash)
                 ->lockForUpdate()
                 ->first();
 
-            if ($physicalFile !== null && $physicalFile->file_size_bytes !== $payload['file_size']) {
+            if ($physicalFile !== null && $physicalFile->file_size !== $fileSize) {
                 return response()->json([
                     'message' => 'The provided file hash already exists with a different file size.',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -75,8 +81,8 @@ class UserFileController extends Controller
 
             if ($physicalFile === null) {
                 $physicalFile = PhysicalFile::query()->create([
-                    'file_hash' => $payload['file_hash'],
-                    'file_size' => $payload['file_size'],
+                    'file_hash' => $fileHash,
+                    'file_size' => $fileSize,
                     'reference_count' => 0,
                 ]);
             }
@@ -84,8 +90,8 @@ class UserFileController extends Controller
             $file = StoredFile::query()->create([
                 'user_id' => $lockedUser->id,
                 'physical_file_id' => $physicalFile->id,
-                'file_name' => $payload['file_name'],
-                'file_size' => $payload['file_size'],
+                'file_name' => $fileName,
+                'file_size' => $fileSize,
             ]);
 
             $lockedUser->forceFill([
